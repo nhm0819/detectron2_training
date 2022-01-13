@@ -9,21 +9,23 @@ from detectron2.config import get_cfg
 from detectron2.data.datasets import register_coco_instances
 from detectron2.data import MetadataCatalog
 
-from trainer.MyTrainer import MyTrainer
+from detectron2.engine import DefaultTrainer, default_argument_parser, default_setup, launch
+
+from trainer.MyTrainer import MyTrainer, custom_mapper
 from utils.labelme2coco import labelme2coco
 
 import wandb, yaml
 
 
 
-parser = argparse.ArgumentParser(description='PyTorch Classification')
+# parser = argparse.ArgumentParser(description='PyTorch Classification')
+parser = default_argument_parser()
 parser.add_argument('--file_storage_path', type=str, default="E:\\work\\kesco\\file_storage", metavar='S',
                     help='file storage path')
 parser.add_argument('--pretrained_path', type=str, default="E:\\work\\kesco\\file_storage\\weights\\mask_rcnn_AP_98.48.pt", metavar='S',
                     help='ptretrained model path')
-parser.add_argument('--num_workers', type=int, default=4, metavar='N',
+parser.add_argument('--num_workers', type=int, default=2, metavar='N',
                     help='num workers')
-
 parser.add_argument('--checkpoint', type=int, default=2, metavar='N',
                     help='eval period')
 
@@ -31,11 +33,16 @@ parser.add_argument('--wandb_project', type=str, default="kesco_mask", metavar='
                     help='wandb project')
 parser.add_argument('--wandb_name', type=int, default='1', metavar='N',
                     help='wandb name')
+parser.add_argument('--collect_json', action='store_true', default=False,
+                    help='json collect process (default: False)')
 
 parser.add_argument('--train_json', type=str, default="E:\\work\\kesco\\code\\autolabeling+maskrcnn\\output\\train.json", metavar='S',
                     help='train json path')
 parser.add_argument('--test_json', type=str, default="E:\\work\\kesco\\code\\autolabeling+maskrcnn\\output\\test.json", metavar='S',
                     help='test json path')
+
+# --num_gpus
+
 
 
 def train(args):
@@ -47,16 +54,20 @@ def train(args):
 
     if os.path.isfile(args.train_json):
         train_collect = args.train_json
-    else:
+    if args.collect_json:
         try:
             train_collect = os.path.join(args.output_dir, "train.json")
             labelme2coco(train_jsons, train_collect)
         except:
             raise ValueError(f"Check the json folder path")
 
+    thing_classes = MetadataCatalog.get("coco_2017_train").thing_classes.copy()
+    thing_classes.append("wire")
+    thing_classes.append("pen")
+    thing_classes.sort()
+
     # register json file for detectron
     register_coco_instances("train", {}, train_collect, args.train_path)  # train_collect must be coco dataset style
-    thing_classes = MetadataCatalog.get("train").thing_classes.copy()
 
     # test (same with train)
     test_json_folder = os.path.join(args.file_storage_path, "test_data", "json")
@@ -64,7 +75,7 @@ def train(args):
 
     if os.path.isfile(args.test_json):
         test_collect = args.test_json
-    else:
+    if args.collect_json:
         test_collect = os.path.join(args.output_dir, "test.json")
         labelme2coco(test_jsons, test_collect, thing_classes=thing_classes)
 
@@ -92,11 +103,13 @@ def train(args):
     cfg.SOLVER.GAMMA = 0.5          # use with WarmupMultiStepLR
     cfg.SOLVER.STEPS = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000] # use with WarmupMultiStepLR
     cfg.SOLVER.LR_SCHEDULER_NAME = "WarmupMultiStepLR" # WarmupCosineLR
-
     cfg.SOLVER.MAX_ITER = 100000
     cfg.SOLVER.CHECKPOINT_PERIOD = args.checkpoint # validation period
+
+    # cfg.SOLVER.REFERENCE_WORLD_SIZE = args.world_size
+
     cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 256
-    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 81  # num classes = 80+1 (coco dataset + wire)
+    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 82  # num classes = 80+1+1 (coco dataset + wire + pen)
     cfg.OUTPUT_DIR = args.output_dir # cfg.OUTPUT_DIR = f"./output/output_{args.output_num+1}"
 
     # resize default func : resize shortest edge
@@ -126,21 +139,26 @@ if __name__ == '__main__':
     args.train_path = os.path.join(args.file_storage_path, "train_data")
     args.test_path = os.path.join(args.file_storage_path, "test_data")
 
-    # output number
+    # output folder number
     output_folders = glob.glob("./output/output_*")
     output_num = 0
-    for output_folder in output_folders:
-        output_num = int(output_folder.split('_')[-1]) if int(output_folder.split('_')[-1]) > output_num else output_num
-    args.output_num = output_num
+    if len(output_folders)>0:
+        for output_folder in output_folders:
+            output_num = int(output_folder.split('_')[-1]) if int(output_folder.split('_')[-1]) > output_num else output_num
+        args.output_num = output_num
+
     args.output_dir = os.path.join(os.getcwd(), "output", f"output_{args.output_num+1}")
+
     os.makedirs(args.output_dir, exist_ok=True)
 
     print("---------Mask RCNN Training---------")
-    #try:
-    train(args)
-    # except:
-    #     print("RCNN Training Error")
-    #     shutil.rmtree(args.output_dir)
-    #       raise
+    # train(args)
 
-
+    launch(
+        train,
+        args.num_gpus,
+        num_machines=args.num_machines,
+        machine_rank=args.machine_rank,
+        dist_url=args.dist_url,
+        args=(args,),
+    )
