@@ -1,7 +1,6 @@
 FROM pytorch/pytorch:1.9.1-cuda11.1-cudnn8-runtime
 # To use this Dockerfile:
-# 1. `nvidia-docker build -t detectron2:v0 .`
-# 2. `nvidia-docker run -it --name detectron2 detectron2:v0`
+# 1. docker pull pytorch/pytorch:1.9.1-cuda11.1-cudnn8-runtime
 # 
 # To enable GUI support (Linux):
 # 1. Grant the container temporary access to your x server (will be reverted at reboot of your host): 
