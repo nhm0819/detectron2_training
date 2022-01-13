@@ -4,7 +4,7 @@ from detectron2.data import build_detection_test_loader, build_detection_train_l
 from detectron2.utils.events import (CommonMetricPrinter, JSONWriter,
                                      TensorboardXWriter, get_event_storage)
 
-from LossEvalHook import LossEvalHook
+from trainer.LossEvalHook import LossEvalHook
 from detectron2.data import detection_utils as utils
 import detectron2.data.transforms as T
 from wandb_log import WandB_Printer
@@ -13,33 +13,34 @@ import torch
 import os
 import copy
 
-# def custom_mapper(dataset_dict):
-#     # Implement a mapper, similar to the default DatasetMapper, but with your own customizations
-#     dataset_dict = copy.deepcopy(dataset_dict)  # it will be modified by code below
-#     image = utils.read_image(dataset_dict["file_name"], format="BGR")
-#     # T.Resize((800,800)),
-#     transform_list = [
-#         # T.Resize((720, 1280)),
-#         T.ResizeShortestEdge(short_edge_length=(640, 672, 704, 720), max_size=1280,
-#                              sample_style='choice'),
-#         T.RandomFlip(prob=0.5, horizontal=False, vertical=True),
-#         T.RandomFlip(prob=0.5, horizontal=True, vertical=False),
-#         T.RandomBrightness(0.8, 1.2),
-#         T.RandomSaturation(0.8, 1.2),
-#         T.RandomContrast(0.8, 1.2)
-#     ]
-#
-#     image, transforms = T.apply_transform_gens(transform_list, image)
-#     dataset_dict["image"] = torch.as_tensor(image.transpose(2, 0, 1).astype("float32"))
-#
-#     annos = [
-#         utils.transform_instance_annotations(obj, transforms, image.shape[:2])
-#         for obj in dataset_dict.pop("annotations")
-#         if obj.get("iscrowd", 0) == 0
-#     ]
-#     instances = utils.annotations_to_instances(annos, image.shape[:2])
-#     dataset_dict["instances"] = utils.filter_empty_instances(instances)
-#     return dataset_dict
+def custom_mapper(dataset_dict):
+    # Implement a mapper, similar to the default DatasetMapper, but with your own customizations
+    dataset_dict = copy.deepcopy(dataset_dict)  # it will be modified by code below
+    image = utils.read_image(dataset_dict["file_name"], format="BGR")
+    # T.Resize((800,800)),
+    transform_list = [
+        # T.Resize((720, 1280)),
+        T.ResizeShortestEdge(short_edge_length=(640, 672, 704, 720), max_size=1280,
+                             sample_style='choice'),
+        T.RandomFlip(prob=0.5, horizontal=False, vertical=True),
+        T.RandomFlip(prob=0.5, horizontal=True, vertical=False),
+        T.RandomBrightness(0.8, 1.2),
+        T.RandomSaturation(0.8, 1.2),
+        T.RandomContrast(0.8, 1.2)
+    ]
+
+
+    image, transforms = T.apply_transform_gens(transform_list, image)
+    dataset_dict["image"] = torch.as_tensor(image.transpose(2, 0, 1).astype("float32"))
+
+    annos = [
+        utils.transform_instance_annotations(obj, transforms, image.shape[:2])
+        for obj in dataset_dict.pop("annotations")
+        if obj.get("iscrowd", 0) == 0
+    ]
+    instances = utils.annotations_to_instances(annos, image.shape[:2])
+    dataset_dict["instances"] = utils.filter_empty_instances(instances)
+    return dataset_dict
 
 
 class MyTrainer(DefaultTrainer):
@@ -49,22 +50,27 @@ class MyTrainer(DefaultTrainer):
             output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
         return COCOEvaluator(dataset_name, cfg, True, output_folder)
 
+    # @classmethod
+    # def build_train_loader(cls, cfg):
+    #     return build_detection_train_loader(cfg, mapper=DatasetMapper(cfg, is_train=True,
+    #                                                                   augmentations=[
+    #                                                                       T.Resize((720, 1280)),
+    #                                                                       # T.ResizeShortestEdge(
+    #                                                                       #     short_edge_length=(640, 672, 704, 720),
+    #                                                                       #     max_size=1280,
+    #                                                                       #     sample_style='choice'),
+    #                                                                       T.RandomFlip(prob=0.5, horizontal=False,
+    #                                                                                    vertical=True),
+    #                                                                       T.RandomFlip(prob=0.5, horizontal=True,
+    #                                                                                    vertical=False),
+    #                                                                       T.RandomBrightness(0.8, 1.2),
+    #                                                                       T.RandomSaturation(0.8, 1.2),
+    #                                                                       T.RandomContrast(0.8, 1.2)
+    #                                                                   ]))
+
     @classmethod
     def build_train_loader(cls, cfg):
-        return build_detection_train_loader(cfg, mapper=DatasetMapper(cfg, is_train=True,
-                                                                      augmentations=[
-                                                                          T.ResizeShortestEdge(
-                                                                              short_edge_length=(640, 672, 704, 720),
-                                                                              max_size=1280,
-                                                                              sample_style='choice'),
-                                                                          T.RandomFlip(prob=0.5, horizontal=False,
-                                                                                       vertical=True),
-                                                                          T.RandomFlip(prob=0.5, horizontal=True,
-                                                                                       vertical=False),
-                                                                          T.RandomBrightness(0.8, 1.2),
-                                                                          T.RandomSaturation(0.8, 1.2),
-                                                                          T.RandomContrast(0.8, 1.2)
-                                                                      ]))
+        return build_detection_train_loader(cfg, mapper=custom_mapper)
 
     # @classmethod
     # def build_test_loader(cls, cfg):
@@ -82,17 +88,11 @@ class MyTrainer(DefaultTrainer):
             )
         ))
 
-        # hooks.append(PeriodicWriter(
-        #     [WandB_Printer(name=self.cfg.wandb_name, project=self.cfg.wandb_project, cfg=self.cfg)], period=1))
-        # writerList = [
-        #     CustomMetricPrinter(self.showTQDM, self.cfg.SOLVER.MAX_ITER),
-        #     JSONWriter(os.path.join(self.cfg.OUTPUT_DIR, "metrics.json")),
-        #     TensorboardXWriter(self.cfg.OUTPUT_DIR),
-        #     WandB_Printer(name = self.cfg.OUTPUT_DIR.split("/")[1], project="object-detection",entity="cv4")
-        # ]
-
-
+        hooks = hooks[:-2] + hooks[-2:][::-1]
         return hooks
+
+
+
 
     def build_writers(self):
         """Extends default writers with a Wandb writer if Wandb logging was enabled.
