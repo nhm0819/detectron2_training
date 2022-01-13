@@ -12,4 +12,5 @@
 ```
 docker pull pytorch/pytorch:1.9.1-cuda11.1-cudnn8-runtime
 docker build -t detectron2:latest .
+docker run -it -v $volume:$volume --gpus all --name detectron2 --shm-size=8G detectron2:latest /bin/bash
 ```
