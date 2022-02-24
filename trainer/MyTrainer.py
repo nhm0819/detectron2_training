@@ -48,7 +48,7 @@ class MyTrainer(DefaultTrainer):
     def build_evaluator(cls, cfg, dataset_name, output_folder=None):
         if output_folder is None:
             output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
-        return COCOEvaluator(dataset_name, cfg, True, output_folder)
+        return COCOEvaluator(dataset_name, output_dir=output_folder)
 
     # @classmethod
     # def build_train_loader(cls, cfg):
